@@ -20,8 +20,9 @@ useEffect(() => {
 
       const userProfile = await getUserProfile(firebaseUser.uid);
 
-console.log('UID LOGADO:', firebaseUser.uid);
-console.log('PROFILE:', userProfile);
+console.log('UID autenticado:', firebaseUser.uid);
+console.log('Perfil carregado:', userProfile);
+console.log('Projeto Firebase:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
 
       if (userProfile) {
         setProfile(userProfile);
