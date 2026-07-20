@@ -18,20 +18,27 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setErro('');
-    setLoading(true);
-    try {
-      await login(email.trim(), senha);
-      navigate('/');
-    } catch (error) {
-      setErro(loginErrors[error.code] || 'Não foi possível entrar. Verifique seus dados e tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
+ const handleSubmit = async (event) => {
+  event.preventDefault();
+  setErro('');
+  setLoading(true);
 
+  try {
+    await login(email.trim(), senha);
+    navigate('/');
+  } catch (error) {
+    console.error('Erro completo do Firebase:', error);
+    console.error('Código do erro:', error.code);
+    console.error('Mensagem do erro:', error.message);
+
+    setErro(
+      loginErrors[error.code] ||
+      `Erro ao entrar: ${error.code || 'erro desconhecido'}`
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={handleSubmit}>
