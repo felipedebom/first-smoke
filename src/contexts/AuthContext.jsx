@@ -20,6 +20,9 @@ useEffect(() => {
 
       const userProfile = await getUserProfile(firebaseUser.uid);
 
+console.log('UID LOGADO:', firebaseUser.uid);
+console.log('PROFILE:', userProfile);
+
       if (userProfile) {
         setProfile(userProfile);
       } else {

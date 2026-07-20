@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { BarChart3, CreditCard, PackageSearch, ShoppingBag, TriangleAlert, Wallet } from 'lucide-react';
+import {
+  BarChart3,
+  CalendarDays,
+  CreditCard,
+  PackageSearch,
+  ReceiptText,
+  ShoppingBag,
+  Wallet,
+} from 'lucide-react';
 import { db } from '../firebase';
 import {
   formatCurrency,
@@ -8,117 +16,563 @@ import {
   toNumber,
 } from '../../formatters';
 
-const sameDay = (first, second) => first.getDate() === second.getDate() && first.getMonth() === second.getMonth() && first.getFullYear() === second.getFullYear();
-const timestampDate = (value) => value?.toDate?.() || (value ? new Date(value) : null);
+const sameDay = (firstDate, secondDate) => (
+  firstDate.getDate() === secondDate.getDate()
+  && firstDate.getMonth() === secondDate.getMonth()
+  && firstDate.getFullYear() === secondDate.getFullYear()
+);
+
+const timestampDate = (value) => (
+  value?.toDate?.() || (value ? new Date(value) : null)
+);
 
 export default function Dashboard() {
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [receivables, setReceivables] = useState([]);
-useEffect(() => {
-  const unsubscribe = onSnapshot(
-    collection(db, 'produtos'),
-    (snapshot) => {
-      setProducts(
-        snapshot.docs.map((item) => ({
-          id: item.id,
-          ...item.data(),
-        }))
-      );
-    }
-  );
+  const [loading, setLoading] = useState(true);
 
-  return unsubscribe;
-}, []);
+  useEffect(() => {
+    let productsLoaded = false;
+    let salesLoaded = false;
+    let receivablesLoaded = false;
 
-useEffect(() => {
-  const unsubscribe = onSnapshot(
-    collection(db, 'vendas'),
-    (snapshot) => {
-      setSales(
-        snapshot.docs.map((item) => ({
-          id: item.id,
-          ...item.data(),
-        }))
-      );
-    }
-  );
+    const finishLoading = () => {
+      if (productsLoaded && salesLoaded && receivablesLoaded) {
+        setLoading(false);
+      }
+    };
 
-  return unsubscribe;
-}, []);
+    const unsubscribeProducts = onSnapshot(
+      collection(db, 'produtos'),
+      (snapshot) => {
+        setProducts(
+          snapshot.docs.map((document) => ({
+            id: document.id,
+            ...document.data(),
+          })),
+        );
 
-useEffect(() => {
-  const unsubscribe = onSnapshot(
-    collection(db, 'fiados'),
-    (snapshot) => {
-      setReceivables(
-        snapshot.docs.map((item) => ({
-          id: item.id,
-          ...item.data(),
-        }))
-      );
-    }
-  );
+        productsLoaded = true;
+        finishLoading();
+      },
+      (error) => {
+        console.error('Erro ao carregar produtos:', error);
+        productsLoaded = true;
+        finishLoading();
+      },
+    );
 
-  return unsubscribe;
-}, []);
+    const unsubscribeSales = onSnapshot(
+      collection(db, 'vendas'),
+      (snapshot) => {
+        setSales(
+          snapshot.docs.map((document) => ({
+            id: document.id,
+            ...document.data(),
+          })),
+        );
+
+        salesLoaded = true;
+        finishLoading();
+      },
+      (error) => {
+        console.error('Erro ao carregar vendas:', error);
+        salesLoaded = true;
+        finishLoading();
+      },
+    );
+
+    const unsubscribeReceivables = onSnapshot(
+      collection(db, 'fiados'),
+      (snapshot) => {
+        setReceivables(
+          snapshot.docs.map((document) => ({
+            id: document.id,
+            ...document.data(),
+          })),
+        );
+
+        receivablesLoaded = true;
+        finishLoading();
+      },
+      (error) => {
+        console.error('Erro ao carregar fiados:', error);
+        receivablesLoaded = true;
+        finishLoading();
+      },
+    );
+
+    return () => {
+      unsubscribeProducts();
+      unsubscribeSales();
+      unsubscribeReceivables();
+    };
+  }, []);
 
   const overview = useMemo(() => {
     const now = new Date();
-    const lowStock = products.filter((product) => toNumber(product.estoque) <= toNumber(product.estoqueMinimo));
+
     const salesToday = sales.filter((sale) => {
-      const date = timestampDate(sale.data);
-      return date && sameDay(date, now);
-    });
-    const salesMonth = sales.filter((sale) => {
-      const date = timestampDate(sale.data);
-      return date && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-    });
-    const topProductMap = new Map();
-    sales.forEach((sale) => sale.itens?.forEach((item) => topProductMap.set(item.nome, (topProductMap.get(item.nome) || 0) + toNumber(item.quantidade))));
-    const topProducts = [...topProductMap.entries()].sort((first, second) => second[1] - first[1]).slice(0, 5);
-    const paymentTotals = sales.reduce((totals, sale) => ({ ...totals, [sale.pagamento || 'Não informado']: (totals[sale.pagamento || 'Não informado'] || 0) + toNumber(sale.total) }), {});
-    const week = [...Array(7)].map((_, index) => {
-      const day = new Date(now); day.setHours(0, 0, 0, 0); day.setDate(now.getDate() - (6 - index));
-      return { label: day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''), value: sales.filter((sale) => { const date = timestampDate(sale.data); return date && sameDay(date, day); }).reduce((sum, sale) => sum + toNumber(sale.total), 0) };
+      const saleDate = timestampDate(sale.data);
+      return saleDate && sameDay(saleDate, now);
     });
 
+    const salesMonth = sales.filter((sale) => {
+      const saleDate = timestampDate(sale.data);
+
+      return (
+        saleDate
+        && saleDate.getMonth() === now.getMonth()
+        && saleDate.getFullYear() === now.getFullYear()
+      );
+    });
+
+    const topProductMap = new Map();
+
+    sales.forEach((sale) => {
+      sale.itens?.forEach((item) => {
+        const productName = item.nome || 'Produto sem nome';
+        const currentQuantity = topProductMap.get(productName) || 0;
+
+        topProductMap.set(
+          productName,
+          currentQuantity + toNumber(item.quantidade),
+        );
+      });
+    });
+
+    const topProducts = [...topProductMap.entries()]
+      .sort((first, second) => second[1] - first[1])
+      .slice(0, 5);
+
+    const paymentTotals = salesMonth.reduce((totals, sale) => {
+      const paymentMethod = sale.pagamento || 'Não informado';
+
+      totals[paymentMethod] = (
+        totals[paymentMethod] || 0
+      ) + toNumber(sale.total);
+
+      return totals;
+    }, {});
+
+    const week = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(now);
+
+      day.setHours(0, 0, 0, 0);
+      day.setDate(now.getDate() - (6 - index));
+
+      const total = sales
+        .filter((sale) => {
+          const saleDate = timestampDate(sale.data);
+          return saleDate && sameDay(saleDate, day);
+        })
+        .reduce(
+          (sum, sale) => sum + toNumber(sale.total),
+          0,
+        );
+
+      return {
+        id: day.toISOString(),
+        label: day
+          .toLocaleDateString('pt-BR', { weekday: 'short' })
+          .replace('.', ''),
+        value: total,
+      };
+    });
+
+    const todayTotal = salesToday.reduce(
+      (sum, sale) => sum + toNumber(sale.total),
+      0,
+    );
+
+    const monthTotal = salesMonth.reduce(
+      (sum, sale) => sum + toNumber(sale.total),
+      0,
+    );
+
+    const inventoryValue = products.reduce(
+      (sum, product) => (
+        sum
+        + (
+          toNumber(product.estoque)
+          * toNumber(product.precoCusto ?? product.precoVenda)
+        )
+      ),
+      0,
+    );
+
+    const openReceivables = receivables
+      .filter((receivable) => receivable.status !== 'Pago')
+      .reduce((sum, receivable) => {
+        const remainingValue = (
+          receivable.saldoRestante
+          ?? receivable.valorRestante
+          ?? receivable.valor
+        );
+
+        return sum + toNumber(remainingValue);
+      }, 0);
+
+    const averageTicket = salesMonth.length
+      ? monthTotal / salesMonth.length
+      : 0;
+
+    const recentSales = [...sales]
+      .sort((first, second) => {
+        const firstDate = timestampDate(first.data)?.getTime() || 0;
+        const secondDate = timestampDate(second.data)?.getTime() || 0;
+
+        return secondDate - firstDate;
+      })
+      .slice(0, 6);
+
     return {
-      lowStock,
-      todayTotal: salesToday.reduce((sum, sale) => sum + toNumber(sale.total), 0),
-      monthTotal: salesMonth.reduce((sum, sale) => sum + toNumber(sale.total), 0),
-      inventoryValue: products.reduce((sum, product) => sum + toNumber(product.estoque) * toNumber(product.precoCusto ?? product.precoVenda), 0),
-      receivables: receivables.filter((item) => item.status !== 'Pago').reduce((sum, item) => sum + toNumber(item.valor), 0),
+      todayTotal,
+      monthTotal,
+      salesTodayCount: salesToday.length,
+      salesMonthCount: salesMonth.length,
+      inventoryValue,
+      openReceivables,
+      averageTicket,
       topProducts,
       paymentTotals,
       week,
-      recentSales: [...sales].sort((first, second) => (timestampDate(second.data)?.getTime() || 0) - (timestampDate(first.data)?.getTime() || 0)).slice(0, 6),
+      recentSales,
     };
   }, [products, receivables, sales]);
 
-  const maxWeekValue = Math.max(...overview.week.map((day) => day.value), 1);
+  const maxWeekValue = Math.max(
+    ...overview.week.map((day) => day.value),
+    1,
+  );
+
+  const currentDate = new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date());
+
+  if (loading) {
+    return (
+      <div className="dashboard-loading">
+        <div className="dashboard-loading-spinner" />
+
+        <div>
+          <strong>Carregando dashboard</strong>
+          <span>Buscando as informações da FIRST SMOKE.</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <div className="page-header"><h2>Dashboard</h2><p>Visão geral da Firts Smoke.</p></div>
-      <div className="metric-grid">
-        <div className="metric-card"><div className="metric-icon"><Wallet size={20} /></div><span>Vendas de hoje</span><strong>{formatCurrency(overview.todayTotal)}</strong></div>
-        <div className="metric-card"><div className="metric-icon"><BarChart3 size={20} /></div><span>Vendas no mês</span><strong>{formatCurrency(overview.monthTotal)}</strong></div>
-        <div className="metric-card"><div className="metric-icon"><PackageSearch size={20} /></div><span>Produtos cadastrados</span><strong>{products.length}</strong></div>
-        <div className="metric-card"><div className="metric-icon"><TriangleAlert size={20} /></div><span>Estoque baixo</span><strong>{overview.lowStock.length}</strong></div>
-        <div className="metric-card"><div className="metric-icon"><ShoppingBag size={20} /></div><span>Valor em estoque</span><strong>{formatCurrency(overview.inventoryValue)}</strong></div>
-        <div className="metric-card"><div className="metric-icon"><CreditCard size={20} /></div><span>Fiado em aberto</span><strong>{formatCurrency(overview.receivables)}</strong></div>
-      </div>
+    <div className="dashboard-page">
+      <header className="dashboard-header">
+        <div>
+          <span className="dashboard-eyebrow">
+            Visão geral
+          </span>
 
-      <div className="dashboard-main-grid">
-        <section className="panel chart-panel"><div className="panel-heading"><div><h3>Vendas dos últimos 7 dias</h3><p>Total vendido por dia.</p></div><BarChart3 size={22} /></div><div className="week-chart">{overview.week.map((day) => <div className="chart-bar-group" key={day.label}><span className="chart-value">{day.value ? formatCurrency(day.value) : ''}</span><div className="chart-track"><div className="chart-bar" style={{ height: `${(day.value / maxWeekValue) * 100}%` }} /></div><small>{day.label}</small></div>)}</div></section>
-        <section className="panel"><div className="panel-heading"><div><h3>Mais vendidos</h3><p>Quantidade acumulada nas vendas.</p></div><ShoppingBag size={22} /></div><div className="rank-list">{overview.topProducts.map(([name, quantity], index) => <div className="rank-item" key={name}><span>{String(index + 1).padStart(2, '0')}</span><strong>{name}</strong><b>{quantity} un.</b></div>)}{!overview.topProducts.length && <div className="empty-state">As vendas concluídas aparecerão aqui.</div>}</div></section>
-      </div>
+          <h2>Dashboard</h2>
 
-      <div className="dashboard-main-grid">
-        <section className="panel"><div className="panel-heading"><div><h3>Últimas vendas</h3><p>Movimentações concluídas recentemente.</p></div></div><div className="compact-list">{overview.recentSales.map((sale) => <div className="compact-list-item" key={sale.id}><div><strong>{sale.itens?.map((item) => item.nome).join(', ') || 'Venda sem itens'}</strong><span>{formatDateTime(sale.data)} · {sale.pagamento}</span></div><b>{formatCurrency(sale.total)}</b></div>)}{!overview.recentSales.length && <div className="empty-state">Nenhuma venda registrada.</div>}</div></section>
-        <section className="panel"><div className="panel-heading"><div><h3>Total por pagamento</h3><p>Distribuição das vendas concluídas.</p></div></div><div className="payment-list">{Object.entries(overview.paymentTotals).map(([method, total]) => <div key={method}><span>{method}</span><strong>{formatCurrency(total)}</strong></div>)}{!Object.keys(overview.paymentTotals).length && <div className="empty-state">Sem pagamentos no período.</div>}</div></section>
-      </div>
+          <p>
+            Acompanhe os principais resultados da FIRST SMOKE.
+          </p>
+        </div>
+
+        <div className="dashboard-date">
+          <CalendarDays size={17} />
+          <span>{currentDate}</span>
+        </div>
+      </header>
+
+      <section className="metric-grid dashboard-metrics">
+        <article className="metric-card metric-card-highlight">
+          <div className="metric-card-top">
+            <div className="metric-icon">
+              <Wallet size={20} />
+            </div>
+
+            <span className="metric-status">
+              Hoje
+            </span>
+          </div>
+
+          <span>Faturamento de hoje</span>
+          <strong>{formatCurrency(overview.todayTotal)}</strong>
+
+          <small>
+            {overview.salesTodayCount}{' '}
+            {overview.salesTodayCount === 1 ? 'venda realizada' : 'vendas realizadas'}
+          </small>
+        </article>
+
+        <article className="metric-card">
+          <div className="metric-card-top">
+            <div className="metric-icon">
+              <BarChart3 size={20} />
+            </div>
+          </div>
+
+          <span>Faturamento no mês</span>
+          <strong>{formatCurrency(overview.monthTotal)}</strong>
+
+          <small>
+            {overview.salesMonthCount}{' '}
+            {overview.salesMonthCount === 1 ? 'venda registrada' : 'vendas registradas'}
+          </small>
+        </article>
+
+        <article className="metric-card">
+          <div className="metric-card-top">
+            <div className="metric-icon">
+              <ReceiptText size={20} />
+            </div>
+          </div>
+
+          <span>Ticket médio mensal</span>
+          <strong>{formatCurrency(overview.averageTicket)}</strong>
+
+          <small>
+            Média por venda no mês atual
+          </small>
+        </article>
+
+        <article className="metric-card">
+          <div className="metric-card-top">
+            <div className="metric-icon">
+              <PackageSearch size={20} />
+            </div>
+          </div>
+
+          <span>Valor em estoque</span>
+          <strong>{formatCurrency(overview.inventoryValue)}</strong>
+
+          <small>
+            {products.length}{' '}
+            {products.length === 1 ? 'produto cadastrado' : 'produtos cadastrados'}
+          </small>
+        </article>
+
+        <article className="metric-card">
+          <div className="metric-card-top">
+            <div className="metric-icon">
+              <CreditCard size={20} />
+            </div>
+          </div>
+
+          <span>Fiado em aberto</span>
+          <strong>{formatCurrency(overview.openReceivables)}</strong>
+
+          <small>
+            Valores ainda não quitados
+          </small>
+        </article>
+      </section>
+
+      <section className="dashboard-primary-grid">
+        <article className="panel chart-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="panel-label">
+                Desempenho semanal
+              </span>
+
+              <h3>Vendas dos últimos 7 dias</h3>
+
+              <p>
+                Faturamento registrado em cada dia.
+              </p>
+            </div>
+
+            <div className="panel-heading-icon">
+              <BarChart3 size={21} />
+            </div>
+          </div>
+
+          <div className="week-chart">
+            {overview.week.map((day) => (
+              <div
+                className="chart-bar-group"
+                key={day.id}
+              >
+                <span className="chart-value">
+                  {day.value
+                    ? formatCurrency(day.value)
+                    : 'R$ 0'}
+                </span>
+
+                <div className="chart-track">
+                  <div
+                    className="chart-bar"
+                    style={{
+                      height: `${Math.max(
+                        (day.value / maxWeekValue) * 100,
+                        day.value ? 5 : 0,
+                      )}%`,
+                    }}
+                  />
+                </div>
+
+                <small>{day.label}</small>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="panel-label">
+                Produtos
+              </span>
+
+              <h3>Mais vendidos</h3>
+
+              <p>
+                Quantidade acumulada em vendas.
+              </p>
+            </div>
+
+            <div className="panel-heading-icon">
+              <ShoppingBag size={21} />
+            </div>
+          </div>
+
+          <div className="rank-list">
+            {overview.topProducts.map(([name, quantity], index) => (
+              <div
+                className="rank-item"
+                key={name}
+              >
+                <span>
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+
+                <strong>{name}</strong>
+                <b>{quantity} un.</b>
+              </div>
+            ))}
+
+            {!overview.topProducts.length && (
+              <div className="empty-state dashboard-empty-state">
+                As vendas concluídas aparecerão aqui.
+              </div>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="dashboard-secondary-grid">
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="panel-label">
+                Movimentações
+              </span>
+
+              <h3>Últimas vendas</h3>
+
+              <p>
+                Vendas concluídas recentemente.
+              </p>
+            </div>
+          </div>
+
+          <div className="compact-list">
+            {overview.recentSales.map((sale) => (
+              <div
+                className="compact-list-item"
+                key={sale.id}
+              >
+                <div>
+                  <strong>
+                    {sale.clienteNome || 'Venda direta'}
+                  </strong>
+
+                  <span>
+                    {sale.itens
+                      ?.map((item) => item.nome)
+                      .join(', ') || 'Venda sem itens'}
+                  </span>
+
+                  <small>
+                    {formatDateTime(sale.data)}
+                    {' · '}
+                    {sale.pagamento || 'Pagamento não informado'}
+                  </small>
+                </div>
+
+                <b>{formatCurrency(sale.total)}</b>
+              </div>
+            ))}
+
+            {!overview.recentSales.length && (
+              <div className="empty-state dashboard-empty-state">
+                Nenhuma venda registrada.
+              </div>
+            )}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="panel-label">
+                Recebimentos
+              </span>
+
+              <h3>Formas de pagamento</h3>
+
+              <p>
+                Distribuição das vendas do mês.
+              </p>
+            </div>
+          </div>
+
+          <div className="payment-list">
+            {Object.entries(overview.paymentTotals)
+              .sort((first, second) => second[1] - first[1])
+              .map(([method, total]) => {
+                const percentage = overview.monthTotal
+                  ? (total / overview.monthTotal) * 100
+                  : 0;
+
+                return (
+                  <div
+                    className="payment-item"
+                    key={method}
+                  >
+                    <div className="payment-item-heading">
+                      <span>{method}</span>
+                      <strong>{formatCurrency(total)}</strong>
+                    </div>
+
+                    <div className="payment-progress">
+                      <div
+                        style={{
+                          width: `${percentage}%`,
+                        }}
+                      />
+                    </div>
+
+                    <small>
+                      {percentage.toFixed(1).replace('.', ',')}% do faturamento mensal
+                    </small>
+                  </div>
+                );
+              })}
+
+            {!Object.keys(overview.paymentTotals).length && (
+              <div className="empty-state dashboard-empty-state">
+                Sem pagamentos registrados neste mês.
+              </div>
+            )}
+          </div>
+        </article>
+      </section>
     </div>
   );
 }
