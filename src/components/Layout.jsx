@@ -33,8 +33,8 @@ export default function Layout() {
       </button>
 
       <aside className={`sidebar ${open ? 'open' : ''}`}>
-        <div className="sidebar-logo" aria-label="Empório Reis do Sabor">
-          Empório<span> Reis do Sabor</span>
+        <div className="sidebar-logo" aria-label="First Smoke">
+          First<span> Smoke</span>
         </div>
         <nav className="sidebar-nav">
           {navItems.map(({ to, icon: Icon, label }) => (
