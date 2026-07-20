@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LockKeyhole } from 'lucide-react';
 import { login } from '../firebase';
+import logoFirstSmoke from '../assests/logo-first-smoke.png';
 
 const loginErrors = {
   'auth/invalid-credential': 'E-mail ou senha inválidos.',
@@ -42,7 +42,9 @@ export default function Login() {
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={handleSubmit}>
-        <div className="login-icon"><LockKeyhole size={22} /></div>
+        <div className="login-logo" aria-hidden="true">
+          <img src={logoFirstSmoke} alt="" />
+        </div>
         <h1>First<span> Smoke</span></h1>
         <p>Acesse o sistema de gestão da loja.</p>
         {erro && <div className="login-error" role="alert">{erro}</div>}

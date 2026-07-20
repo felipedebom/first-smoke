@@ -4,7 +4,6 @@ import {
   doc,
   runTransaction,
   serverTimestamp,
-  updateDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -20,7 +19,7 @@ export async function registerHistory(user, acao, tipo = 'sistema') {
   });
 }
 
-export async function registerStockEntry({ productId, quantity, type, note, user }) {
+export async function registerStockEntry({ productId, quantity, note, user }) {
   const productRef = doc(db, 'produtos', productId);
   const entryRef = doc(collection(db, 'entradas'));
   const logRef = doc(collection(db, 'logs'));
@@ -45,7 +44,7 @@ export async function registerStockEntry({ productId, quantity, type, note, user
       produtoId: productId,
       produtoNome: product.nome,
       quantidade: safeQuantity,
-      tipo: type,
+      tipo: 'Entrada',
       observacao: note.trim(),
       usuario: user?.email || 'Sistema',
       usuarioId: user?.uid || null,
@@ -55,7 +54,7 @@ export async function registerStockEntry({ productId, quantity, type, note, user
     transaction.set(logRef, {
       usuario: user?.email || 'Sistema',
       usuarioId: user?.uid || null,
-      acao: `Registrou entrada de ${safeQuantity} unidade(s) de ${product.nome} (${type.toLowerCase()})`,
+      acao: `Registrou entrada de ${safeQuantity} unidade(s) de ${product.nome}`,
       tipo: 'entrada',
       data: serverTimestamp(),
     });
@@ -148,48 +147,42 @@ export async function completeSale({ items, paymentMethod, receivedAmount, custo
 }
 
 export async function settleReceivable(receivable, receivedAmount, user) {
-  const currentBalance = numberValue(
-    receivable.saldoPendente ?? receivable.valor
-  );
-
   const paymentValue = numberValue(receivedAmount);
 
   if (paymentValue <= 0) {
     throw new Error('Informe um valor de pagamento maior que zero.');
   }
 
-  if (paymentValue > currentBalance) {
-    throw new Error('O pagamento não pode ser maior que o saldo pendente.');
-  }
+  const receivableRef = doc(db, 'fiados', receivable.id);
+  const logRef = doc(collection(db, 'logs'));
 
-  const remainingAmount = Number(
-    (currentBalance - paymentValue).toFixed(2)
-  );
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(receivableRef);
+    if (!snapshot.exists()) throw new Error('Fiado não encontrado.');
+    const current = snapshot.data();
+    const currentBalance = numberValue(current.saldoPendente ?? current.valor);
+    if (paymentValue > currentBalance) throw new Error('O pagamento não pode ser maior que o saldo pendente.');
+    const remainingAmount = Number((currentBalance - paymentValue).toFixed(2));
+    const isFullyPaid = remainingAmount <= 0;
 
-  const isFullyPaid = remainingAmount <= 0;
-
-  await updateDoc(doc(db, 'fiados', receivable.id), {
-    valorOriginal: numberValue(
-      receivable.valorOriginal ?? receivable.valor
-    ),
-    saldoPendente: isFullyPaid ? 0 : remainingAmount,
-    valorPago:
-      numberValue(receivable.valorPago) + paymentValue,
-    status: isFullyPaid ? 'Pago' : 'Parcial',
-    atualizadoEm: serverTimestamp(),
-    pagoEm: isFullyPaid ? serverTimestamp() : null,
-    pagoPor: user?.email || 'Sistema',
+    transaction.update(receivableRef, {
+      valorOriginal: numberValue(current.valorOriginal ?? current.valor),
+      saldoPendente: isFullyPaid ? 0 : remainingAmount,
+      valorPago: numberValue(current.valorPago) + paymentValue,
+      status: isFullyPaid ? 'Pago' : 'Parcial',
+      atualizadoEm: serverTimestamp(),
+      pagoEm: isFullyPaid ? serverTimestamp() : null,
+      pagoPor: user?.email || 'Sistema',
+    });
+    transaction.set(logRef, {
+      usuario: user?.email || 'Sistema',
+      usuarioId: user?.uid || null,
+      acao: isFullyPaid
+        ? `Quitou o fiado de ${current.clienteNome} no valor de R$ ${paymentValue.toFixed(2)}`
+        : `Registrou pagamento parcial de R$ ${paymentValue.toFixed(2)} para ${current.clienteNome}`,
+      tipo: 'fiado',
+      data: serverTimestamp(),
+    });
+    return { remainingAmount };
   });
-
-  await registerHistory(
-    user,
-    isFullyPaid
-      ? `Quitou o fiado de ${receivable.clienteNome} no valor de R$ ${paymentValue.toFixed(2)}`
-      : `Registrou pagamento parcial de R$ ${paymentValue.toFixed(2)} para ${receivable.clienteNome}`,
-    'fiado'
-  );
-
-  return {
-    remainingAmount,
-  };
 }

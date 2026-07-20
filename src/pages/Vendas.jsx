@@ -6,14 +6,14 @@ import { db } from '../firebase';
 import { completeSale } from '../services/storeService';
 import { formatCurrency, toNumber } from '../utils/formatters';
 
-const paymentMethods = ['PIX', 'Dinheiro', 'Cartão', 'Fiado'];
+const paymentMethods = ['PIX VINI', 'PIX CRIS', 'Dinheiro', 'Cartão', 'Fiado'];
 
 export default function Vendas() {
   const { user, canOperate } = useAuth();
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('PIX');
+  const [paymentMethod, setPaymentMethod] = useState('PIX VINI');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [feedback, setFeedback] = useState(null);

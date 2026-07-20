@@ -9,9 +9,18 @@ export default function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ role: 'funcionario', nome: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'usuarios'), snap => setUsuarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsub = onSnapshot(collection(db, 'usuarios'), (snap) => {
+      setUsuarios(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')));
+      setLoading(false);
+    }, (error) => {
+      setFeedback({ type: 'error', text: error.message || 'Não foi possível carregar os usuários.' });
+      setLoading(false);
+    });
     return () => unsub();
   }, []);
 
@@ -19,8 +28,21 @@ export default function Usuarios() {
 
   const save = async () => {
     if (!editing) return;
-    await updateDoc(doc(db, 'usuarios', editing), { role: form.role, nome: form.nome });
-    setEditing(null);
+    if (!form.nome.trim()) {
+      setFeedback({ type: 'error', text: 'Informe o nome do usuário.' });
+      return;
+    }
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await updateDoc(doc(db, 'usuarios', editing), { role: form.role, nome: form.nome.trim() });
+      setEditing(null);
+      setFeedback({ type: 'success', text: 'Usuário atualizado com sucesso.' });
+    } catch (error) {
+      setFeedback({ type: 'error', text: error.message || 'Não foi possível atualizar o usuário.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!canManage()) return <div className="loading-screen">Acesso restrito ao Super Admin.</div>;
@@ -31,6 +53,7 @@ export default function Usuarios() {
   return (
     <div>
       <div className="page-header"><h2>Usuários</h2><p>Gerenciamento de permissões (Super Admin)</p></div>
+      {feedback && <div className={`notice notice-${feedback.type}`} role="alert">{feedback.text}</div>}
 
       <div className="table-wrap">
         <table>
@@ -50,13 +73,15 @@ export default function Usuarios() {
                 </td>
               </tr>
             ))}
+            {loading && <tr><td colSpan="5" className="empty-state">Carregando usuários...</td></tr>}
+            {!loading && !usuarios.length && <tr><td colSpan="5" className="empty-state">Nenhum usuário cadastrado.</td></tr>}
           </tbody>
         </table>
       </div>
 
       {editing && (
         <div className="modal-overlay" onClick={() => setEditing(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
             <h3>Editar Permissões</h3>
             <div className="form-grid">
               <div className="form-group full"><label>Nome</label><input value={form.nome} onChange={e => setForm({...form,nome:e.target.value})} /></div>
@@ -66,8 +91,8 @@ export default function Usuarios() {
               <strong>Super Admin:</strong> Controle técnico total · <strong>Admin:</strong> Controle do negócio · <strong>Funcionário:</strong> Acesso limitado
             </div>
             <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setEditing(null)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={save}><Save size={16} /> Salvar</button>
+              <button className="btn btn-outline" disabled={saving} onClick={() => setEditing(null)}>Cancelar</button>
+              <button className="btn btn-primary" disabled={saving} onClick={save}><Save size={16} /> {saving ? 'Salvando...' : 'Salvar'}</button>
             </div>
           </div>
         </div>

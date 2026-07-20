@@ -9,7 +9,6 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import {
-  AlertTriangle,
   Boxes,
   CircleDollarSign,
   Edit3,
@@ -26,25 +25,12 @@ import { db } from '../firebase';
 import { registerHistory } from '../services/storeService';
 import { formatCurrency, toNumber } from '../utils/formatters';
 
-const CATEGORIES = [
-  'Bebidas',
-  'Pastéis',
-  'Pizzas',
-  'Congelados',
-  'Kits',
-  'Doces',
-  'Carvão',
-  'Tabacaria',
-  'Outros',
-];
-
 const emptyForm = {
   nome: '',
-  categoria: 'Bebidas',
   precoVenda: '',
   precoCusto: '',
   estoqueInicial: '',
-  estoqueMinimo: '',
+  observacao: '',
   ativo: true,
 };
 
@@ -138,13 +124,6 @@ export default function Produtos() {
       (product) => product.ativo !== false,
     );
 
-    const lowStockProducts = products.filter((product) => {
-      const stock = toNumber(product.estoque);
-      const minimum = toNumber(product.estoqueMinimo);
-
-      return stock <= minimum;
-    });
-
     const totalStock = products.reduce(
       (total, product) => total + toNumber(product.estoque),
       0,
@@ -159,7 +138,6 @@ export default function Produtos() {
 
     return {
       activeProducts: activeProducts.length,
-      lowStockProducts: lowStockProducts.length,
       totalStock,
       inventoryValue,
     };
@@ -175,14 +153,13 @@ export default function Produtos() {
   const openEdit = (product) => {
     setForm({
       nome: product.nome || '',
-      categoria: product.categoria || 'Outros',
       precoVenda: String(product.precoVenda ?? product.preco ?? ''),
       precoCusto:
         product.precoCusto === undefined || product.precoCusto === null
           ? ''
           : String(product.precoCusto),
       estoqueInicial: String(toNumber(product.estoque)),
-      estoqueMinimo: String(toNumber(product.estoqueMinimo)),
+      observacao: product.observacao || '',
       ativo: product.ativo !== false,
     });
 
@@ -211,10 +188,6 @@ export default function Produtos() {
       return 'Informe o nome do produto.';
     }
 
-    if (!form.categoria) {
-      return 'Selecione uma categoria.';
-    }
-
     if (toNumber(form.precoVenda) <= 0) {
       return 'Informe um preço de venda maior que zero.';
     }
@@ -231,10 +204,6 @@ export default function Produtos() {
       && toNumber(form.estoqueInicial) < 0
     ) {
       return 'O estoque inicial não pode ser negativo.';
-    }
-
-    if (toNumber(form.estoqueMinimo) < 0) {
-      return 'O estoque mínimo não pode ser negativo.';
     }
 
     return null;
@@ -260,13 +229,12 @@ export default function Produtos() {
     try {
       const payload = {
         nome: form.nome.trim(),
-        categoria: form.categoria,
         precoVenda: toNumber(form.precoVenda),
         precoCusto:
           form.precoCusto === ''
             ? null
             : toNumber(form.precoCusto),
-        estoqueMinimo: toNumber(form.estoqueMinimo),
+        observacao: form.observacao.trim(),
         ativo: form.ativo,
         atualizadoEm: serverTimestamp(),
       };
@@ -287,7 +255,9 @@ export default function Produtos() {
 
         await addDoc(collection(db, 'produtos'), {
           ...payload,
+          categoria: 'Outros',
           estoque: initialStock,
+          estoqueMinimo: 0,
           criadoEm: serverTimestamp(),
         });
 
@@ -457,21 +427,6 @@ export default function Produtos() {
           </div>
         </article>
 
-        <article className="stat-card products-stat-card">
-          <div className="products-stat-icon products-stat-warning">
-            <AlertTriangle size={19} />
-          </div>
-
-          <div>
-            <span className="stat-card-label">
-              Estoque baixo
-            </span>
-
-            <strong className="stat-card-value">
-              {overview.lowStockProducts}
-            </strong>
-          </div>
-        </article>
       </section>
 
       <section className="products-content">
@@ -698,29 +653,6 @@ export default function Produtos() {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="product-category">
-                    Categoria
-                  </label>
-
-                  <select
-                    id="product-category"
-                    value={form.categoria}
-                    onChange={(event) =>
-                      updateForm('categoria', event.target.value)
-                    }
-                  >
-                    {CATEGORIES.map((category) => (
-                      <option
-                        value={category}
-                        key={category}
-                      >
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
                   <label htmlFor="product-status">
                     Status
                   </label>
@@ -738,6 +670,23 @@ export default function Produtos() {
                     <option value="true">Ativo</option>
                     <option value="false">Inativo</option>
                   </select>
+                </div>
+
+                <div className="form-group full">
+                  <label htmlFor="product-notes">
+                    Observação <em>(opcional)</em>
+                  </label>
+
+                  <textarea
+                    id="product-notes"
+                    value={form.observacao}
+                    onChange={(event) =>
+                      updateForm('observacao', event.target.value)
+                    }
+                    placeholder="Escreva informações adicionais sobre o produto"
+                    rows="3"
+                    maxLength="500"
+                  />
                 </div>
               </div>
             </section>
@@ -805,7 +754,7 @@ export default function Produtos() {
 
                 <div>
                   <h4>Controle de estoque</h4>
-                  <p>Quantidade disponível e limite mínimo de atenção.</p>
+                  <p>Quantidade disponível para venda.</p>
                 </div>
               </div>
 
@@ -845,26 +794,6 @@ export default function Produtos() {
                   </div>
                 )}
 
-                <div className="form-group">
-                  <label htmlFor="product-minimum">
-                    Estoque mínimo
-                  </label>
-
-                  <input
-                    id="product-minimum"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={form.estoqueMinimo}
-                    onChange={(event) =>
-                      updateForm(
-                        'estoqueMinimo',
-                        event.target.value,
-                      )
-                    }
-                    placeholder="0"
-                  />
-                </div>
               </div>
             </section>
 

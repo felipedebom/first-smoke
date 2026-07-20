@@ -1,49 +1,71 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { Clock, Search, User } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { Clock, User } from 'lucide-react';
+import { formatDateTime } from '../utils/formatters';
+
+const PAGE_SIZE = 25;
 
 export default function Historico() {
   const [logs, setLogs] = useState([]);
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState('todos');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const q = query(collection(db, 'logs'), orderBy('data', 'desc'), limit(200));
-    const unsub = onSnapshot(q, snap => setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => unsub();
-  }, []);
+  useEffect(() => onSnapshot(
+    query(collection(db, 'logs'), orderBy('data', 'desc'), limit(500)),
+    (snapshot) => {
+      setLogs(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+      setLoading(false);
+    },
+    (snapshotError) => {
+      setError(snapshotError.message || 'Não foi possível carregar o histórico.');
+      setLoading(false);
+    },
+  ), []);
 
-  const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+  const filtered = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('pt-BR');
+    return logs.filter((item) => {
+      const matchesType = type === 'todos' || item.tipo === type;
+      const content = `${item.acao || ''} ${item.usuario || ''}`.toLocaleLowerCase('pt-BR');
+      return matchesType && (!term || content.includes(term));
+    });
+  }, [logs, search, type]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const visibleLogs = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const types = [...new Set(logs.map((item) => item.tipo).filter(Boolean))].sort();
+
+  useEffect(() => setPage(1), [search, type]);
 
   return (
     <div>
-      <div className="page-header"><h2>Histórico</h2><p>Registro de todas as alterações do sistema</p></div>
-
-      <div className="dashboard-grid" style={{gridTemplateColumns:'repeat(3,1fr)'}}>
-        <div className="stat-card"><span className="stat-card-label">Registros Hoje</span><div className="stat-card-value">{logs.filter(l => (l.data?.toDate?.()||0) >= hoje).length}</div></div>
-        <div className="stat-card"><span className="stat-card-label">Registros na Semana</span><div className="stat-card-value">{logs.filter(l => (l.data?.toDate?.()||0) >= inicioSemana).length}</div></div>
-        <div className="stat-card"><span className="stat-card-label">Total de Registros</span><div className="stat-card-value">{logs.length}</div></div>
+      <div className="page-header"><h2>Histórico</h2><p>Consulte as alterações registradas no sistema.</p></div>
+      {error && <div className="notice notice-error" role="alert">{error}</div>}
+      <div className="table-toolbar">
+        <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por ação ou usuário" /></label>
+        <select value={type} onChange={(event) => setType(event.target.value)} aria-label="Filtrar por tipo">
+          <option value="todos">Todos os tipos</option>
+          {types.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <span>{filtered.length} registro(s)</span>
       </div>
-
-      <div className="report-section">
+      <section className="report-section">
         <div className="timeline-log">
-          {logs.map(l => {
-            const d = l.data?.toDate?.() || new Date();
-            const dataStr = d.toLocaleDateString('pt-BR');
-            const horaStr = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-            return (
-              <div key={l.id} className="timeline-log-item">
-                <div className="timeline-log-icon"><Clock size={16} /></div>
-                <div className="timeline-log-text">
-                  <p>{l.acao}</p>
-                  <span><User size={12} style={{display:'inline',verticalAlign:'middle',marginRight:4}} />{l.usuario} · {dataStr} às {horaStr}</span>
-                </div>
-              </div>
-            );
-          })}
-          {logs.length === 0 && <div style={{textAlign:'center',color:'var(--muted)',padding:40}}>Nenhum registro encontrado</div>}
+          {visibleLogs.map((item) => (
+            <div key={item.id} className="timeline-log-item">
+              <div className="timeline-log-icon"><Clock size={16} /></div>
+              <div className="timeline-log-text"><p>{item.acao}</p><span><User size={12} /> {item.usuario || 'Sistema'} · {formatDateTime(item.data)}</span></div>
+            </div>
+          ))}
+          {loading && <div className="empty-state">Carregando histórico...</div>}
+          {!loading && !visibleLogs.length && <div className="empty-state">Nenhum registro corresponde aos filtros.</div>}
         </div>
-      </div>
+      </section>
+      {pageCount > 1 && <div className="pagination"><button className="btn btn-outline btn-sm" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Anterior</button><span>Página {page} de {pageCount}</span><button className="btn btn-outline btn-sm" disabled={page === pageCount} onClick={() => setPage((current) => current + 1)}>Próxima</button></div>}
     </div>
   );
 }

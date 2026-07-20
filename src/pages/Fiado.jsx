@@ -30,6 +30,7 @@ export default function Fiado() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -41,6 +42,7 @@ export default function Fiado() {
             ...item.data(),
           }))
         );
+        setIsLoading(false);
       },
       (error) => {
         setFeedback({
@@ -49,6 +51,7 @@ export default function Fiado() {
             error.message ||
             'Não foi possível carregar os valores em aberto.',
         });
+        setIsLoading(false);
       }
     );
 
@@ -136,7 +139,9 @@ export default function Fiado() {
   user
 );
 
-      closePaymentModal();
+      setSelectedReceivable(null);
+      setPaymentAmount('');
+      setIsPaymentModalOpen(false);
 
       setFeedback({
         type: 'success',
@@ -335,7 +340,8 @@ export default function Fiado() {
               );
             })}
 
-            {!filtered.length && (
+            {isLoading && <tr><td colSpan={canEdit() ? 6 : 5} className="empty-state">Carregando fiados...</td></tr>}
+            {!isLoading && !filtered.length && (
               <tr>
                 <td
                   colSpan={canEdit() ? 6 : 5}

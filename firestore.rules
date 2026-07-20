@@ -2,7 +2,6 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -11,38 +10,42 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isSuperAdmin() {
+    function hasProfile() {
       return isAuthenticated()
-        && get(
-          /databases/$(database)/documents/usuarios/$(request.auth.uid)
-        ).data.role == 'super_admin';
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function isSuperAdmin() {
+      return hasProfile()
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'super_admin';
     }
 
     match /usuarios/{userId} {
       allow read: if isOwner(userId) || isSuperAdmin();
-      allow create: if isSuperAdmin();
-      allow update: if isOwner(userId) || isSuperAdmin();
-      allow delete: if isSuperAdmin();
+      allow create, update, delete: if isSuperAdmin();
     }
 
     match /produtos/{documentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if hasProfile();
     }
 
     match /vendas/{documentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if hasProfile();
     }
 
     match /entradas/{documentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if hasProfile();
     }
 
     match /fiados/{documentId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if hasProfile();
     }
 
-    match /historico/{documentId} {
-      allow read, write: if isAuthenticated();
+    match /logs/{documentId} {
+      allow read: if hasProfile();
+      allow create: if hasProfile()
+        && request.resource.data.usuarioId == request.auth.uid;
+      allow update, delete: if isSuperAdmin();
     }
 
     match /{document=**} {

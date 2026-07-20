@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Menu, X, Home, Package, Boxes, ShoppingCart, WalletCards, BarChart3, History, Users, LogOut } from 'lucide-react';
+import logoFirstSmoke from '../assests/logo-first-smoke.png';
 
 const navItems = [
   { to: '/',          icon: Home,          label: 'Dashboard' },
@@ -15,7 +16,7 @@ const navItems = [
 ];
 
 export default function Layout() {
-  const { profile, signOut, canManage } = useAuth();
+  const { profile, profileError, signOut, canManage } = useAuth();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -34,7 +35,10 @@ export default function Layout() {
 
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-logo" aria-label="First Smoke">
-          First<span> Smoke</span>
+          <span className="sidebar-logo-image" aria-hidden="true">
+            <img src={logoFirstSmoke} alt="" />
+          </span>
+          <strong>First<span> Smoke</span></strong>
         </div>
         <nav className="sidebar-nav">
           {navItems.map(({ to, icon: Icon, label }) => (
@@ -59,6 +63,7 @@ export default function Layout() {
       </aside>
 
       <main className="main-content">
+        {profileError && <div className="notice notice-error" role="alert">{profileError}</div>}
         <Outlet />
       </main>
     </div>
